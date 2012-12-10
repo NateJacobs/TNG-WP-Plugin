@@ -437,7 +437,7 @@ function mbtng_register_form() {
 	while($treerow = mysql_fetch_assoc($treeresult))
 			echo "<option value=\"{$treerow['gedcom']}\">{$treerow['treename']}</option>\n";
 	echo"</select><br/>{$text['leaveblank']}</label></p><br/>";
-	// close the tng db connection
+	// close the tng db connection and change back to WP
 	mbtng_close_tng_table();
 }
 
@@ -502,7 +502,7 @@ function mbtng_intercept_login($username) {
 			$result = mysql_query($query) or die ("Cannot execute query: $query");
 			// get the user information
 			$row = mysql_fetch_assoc($result);
-			// close the tng db connection
+			// close the tng db connection and change back to WP
 			mbtng_close_tng_table();
 			// if the username is a TNG user
 			if ($row) { // Username IS in TNG userlist
@@ -571,7 +571,7 @@ function mbtng_intercept_login($username) {
 				$query = "UPDATE {$users_table} SET password='{$password_hash}' WHERE username='{$tng_user_name}'";
 				// update the TNG password for the specified user
 				$result = mysql_query($query) or die ("Cannot execute query: $query");
-				// close the tng db connection
+				// close the tng db connection and change back to WP
 				mbtng_close_tng_table();
 			} // end user_pass_ok() check
 		} // end username is in WP
@@ -657,7 +657,7 @@ function mbtng_login() {
 		$currentuser = $_SESSION['currentuser'] = $row['username'];
 		$currentuserdesc = $_SESSION['currentuserdesc'] = $row['description'];
 		$session_rp = $_SESSION['session_rp'] = $rootpath;
-
+		// close the tng db connection and change back to WP
 		mbtng_close_tng_table();
 		return $tngusername;
 	}
@@ -716,7 +716,7 @@ function mbtng_create_user($user_ID, $realname='', $tree='') {
 	
 	// if no matches to the email address are found
 	if ($found == 0) {
-	// close the TNG db connection
+		// close the tng db connection and change back to WP
 		mbtng_close_tng_table();
 		// if the real name passed through the function is empty
 		if ($realname == '')
@@ -836,7 +836,7 @@ function mbtng_create_user($user_ID, $realname='', $tree='') {
 		$result = mysql_query($query) or die (mysql_errno($link) . ": " . mysql_error($link). "\n Query:\n".$query);
 		// if all works out get the new TNG userID
 		$success = mysql_insert_id($link);
-		// close the TNG db connection
+		// close the tng db connection and change back to WP
 		mbtng_close_tng_table();
 		// update WP user meta table with the new tng userID
 		update_usermeta($user_ID, 'tng_user_id', $success);
@@ -847,7 +847,7 @@ function mbtng_create_user($user_ID, $realname='', $tree='') {
 	elseif ($found == 1) {
 		// get the info about that user
 		$row = mysql_fetch_assoc($result);
-		// close the connection to the TNG db
+		// close the tng db connection and change back to WP
 		mbtng_close_tng_table();
 		// update WP user meta table with the TNG userID
 		update_usermeta($user_ID, 'tng_user_id', $row['userID']);
@@ -888,7 +888,7 @@ function mbtng_check_user($user_ID) {
 		$row = mysql_fetch_assoc($result);
 		// get the number of rows returned
 		$found = mysql_num_rows($result);
-		// close connection to tng db
+		// close the tng db connection and change back to WP
 		mbtng_close_tng_table();
 		// if the number of rows found is 0
 		if($found == 0) {
@@ -923,7 +923,7 @@ function mbtng_delete_user($user_ID) {
 		$query = "DELETE FROM $users_table WHERE userID='{$tng_user_id}'";
 		// delete the user specified from the tng users table
 		$result = mysql_query($query) or die ("Cannot execute query: $query");
-		// close connection to the tng db
+		// close the tng db connection and change back to WP
 		mbtng_close_tng_table();
 	}
 }
@@ -1081,6 +1081,7 @@ function mbtng_eval_php($filename) {
 		ob_end_clean();
 		$tng_output = $output;
 	}
+	// close the tng db connection and change back to WP
 	mbtng_close_tng_table();
 	return $tng_output;
 }
@@ -1293,68 +1294,111 @@ function mbtng_base_url () {
 ************************************************/
 
 //Replicates tng_db_connect
+// FIX: Use wpdb class
 function mbtng_db_connect() {
+	// get global values
 	global $textpart, $session_charset;
+	// get the tng path
 	$tng_folder = get_option('mbtng_path');
+	// change to the TNG folder directory
 	chdir($tng_folder);
+	// get the contents of config.php
 	$config = file_get_contents ('config.php');
+	// get the contents of customconfig.php
 	$config .= file_get_contents ('customconfig.php');
+	// split the contents of the two files on each new line
 	$configlines = explode("\n",$config);
+	// set the config variable to blank
 	$config = '';
+	// set the globalvars variable
 	$globalvars = 'global $tngconfig';
+	// loop through each new line
 	foreach ($configlines as $line) {
+		// find each line that starts with $database_
 		if (substr(trim($line), 0, 10) == '$database_')
+			// once found trim the line
 			$config .= trim($line)."\n";
+		// if the line contains the string _table
 		if (stripos($line, '_table') !== FALSE) {
+			// set the globalvars variable
+			// return the value of the line with _table starting from position 0 and going to the position of _table +6
+			// this gets each table onto a separate line
 			$globalvars .= ', '.substr(trim($line), 0, stripos($line, '_table')+6);
 			$config .= trim($line)."\n";
 		}
+		// if the string tngconfig is present
 		else if(strpos($line, 'tngconfig') !== FALSE) {
 			$config .= trim($line)."\n";
 		}
-	}
+	} // end foreach loop
+	
+	// the use of eval is highly discouraged
+	// FIX: remove eval
+	// create global variables for database values and table names
 	eval($globalvars.';'.$config);
+	// create connection to TNG db, suppressing errors
 	$link = @mysql_connect($database_host, $database_username, $database_password);
+	// if the session character set is UTF-8 
 	if ($session_charset == 'UTF-8')
+		// mysql api call to set character set to utf8
 		@mysql_query("SET NAMES 'utf8'");
+	// if the connection is good and can select the tng database
 	if( $link && mysql_select_db($database_name, $link))
+		// return true
 		return $link;
+	// otherwise throw and error
 	else {
 		echo "Error: TNG is not communicating with your database. Please check your database settings and try again.";
 		exit;
 	}
+	// return false if nothing is working
 	return( FALSE );
 }
 
 // Reselects the Wordpress database table
 function mbtng_close_tng_table () {
+	// close the tng db connection and change back to WP
 	mysql_select_db (DB_NAME);
 }
 
 //Returns the full URL requested. May need modifying for IIS.
 function mbtng_requested_url () {
+	// determines the url requsted and returns it
 	return "http://".$_SERVER['SERVER_NAME'].urldecode($_SERVER['REQUEST_URI']);
 }
 
 //Returns TRUE if running on Windows
 function mbtng_is_windows () {
+	// checks the PHP_OS constant to determine the server OS
 	if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN')
+		// if it is windows return true
 		return true;
 	else
+		// otherwise return false
 		return false;
 }
 
-//Returns true if mbtng_path option is correct
+// Returns true if mbtng_path option is correct
+// pass in a path
 function mbtng_correct_path($path='') {
+	// get the current working directory
 	$current_folder = getcwd();
+	// if the path is not there
 	if ($path == '')
+		// then the path is stored in the WP database
 		$path = get_option('mbtng_path');
+	// now change directory to the path variable: either from the WP db or passed to the function
 	@chdir($path);
+	// check if these three files exist in this new directory
 	if (file_exists('begin.php') && file_exists('admin.php') && file_exists('genlib.php')) {
+		// if they do change the directory back to the current working directory
 		chdir($current_folder);
+		// and return true (the path is valid)
 		return true;
 	} else {
+		// otherwise change the directory back to the current working directory
 		chdir($current_folder);
+		// and return false (the path is invalid)
 		return false;
 	}
 }
