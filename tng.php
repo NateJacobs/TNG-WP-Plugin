@@ -43,13 +43,22 @@ add_action('plugins_loaded', 'mbtng_serve_static_files');				// Serves static fi
 
 // Serves static files, if requested. Runs initialisation if not.
 function mbtng_serve_static_files () {
+	// start a session. 
+	// QUESTION: Why?
 	session_start();
+	// check if the request is from the Update TNG Variables button on the settings page. 
 	if (isset($_REQUEST['update_globalvars'])) {
+		// if it is that request run the rewrite globalvars function
+		// this function gets all the global varibale names from TNG and puts them in the WordPress options table
 		mbtng_rewrite_globalvars();
+		// redirect to the plugin settings page
 		header('Location: '.get_bloginfo('wpurl').'/wp-admin/admin.php?page=tng-wordpress-plugin/tng.php&updated=globalvars');
+		// and finish
 		die();
 	}
+	// check if the request is from the Search for TNG Installation button on the settings page
 	if (isset($_REQUEST['tng_search'])) {
+		// if it is, run the search function
 		mbtng_search_for_tng (dirname(__FILE__));
 	}
 	if (mbtng_display_page()) {
@@ -231,12 +240,15 @@ function mbtng_rewrite_globalvars() {
 	$folders[11] = mbtng_folder_trailingslashit($folders[1].'template10');
 	$folders[12] = mbtng_folder_trailingslashit($folders[1].'template11');
 	$bnn = $keep = array();
+	// loop through each folder and look for files that end in .php, are not directories, not in the file array and are not called tng.php
 	foreach ($folders as $folder) {
 		if ($dh = @opendir($folder)) {
 			while (false !== ($file = readdir($dh))) {
 		    	if (substr($file, -4) == ".php" && !is_dir($folder.$file) && !in_array($file, $bnn) && $file != "tng.php") {
 		    		$lines=file($folder.$file);
+		    		// get each line of the files and loop through them
 					foreach ($lines as $line)
+						// get the list of global variables from the TNG files
 						if (stripos($line, 'global $') !== FALSE) {
 							$start = stripos($line, 'global $')+7;
 							$end = strpos($line, ';', $start);
@@ -245,12 +257,16 @@ function mbtng_rewrite_globalvars() {
 						}
 		       	}	
 			}
+			// close the directory connection
 		   	closedir($dh);
 		}
 	}
+	// trim each variable using the mbtng_trim function
 	array_walk ($keep, 'mbtng_trim');
+	// get the list of unique variables
 	$keep = array_unique($keep);
 	if (is_array($keep))
+		// update the option with each global variable found
 		update_option('mbtng_globalvars', '<?php GLOBAL '.implode (', ', $keep).'; ?>'); //Think about BASE64
 }
 
@@ -975,8 +991,11 @@ function mbtng_frontend_footer() {
 
 // Returns the TNG Wordpress post whenever a TNG page is requested
 function mbtng_fake_post($posts){
+	// if the WordPress tng display page is called
 	if (mbtng_display_page()){
+		// set $posts to only the WordPress tng display page
 		$posts = get_pages('include='.get_option('mbtng_wordpress_page'));
+		// remove the trailing slash
 		add_filter('user_trailingslashit', 'mbtng_smart_trailingslashit');
 	}
 	return $posts;
@@ -993,25 +1012,47 @@ function mbtng_output_page() {
 
 // Buffers Wordpress and TNG code to allow for correct merging of HTML
 function mbtng_buffer_start() {
+	// get the global variables
 	global $tng_output, $tng_head, $tng_footer;
+	// set $query equal to the value after the ? character in the url
 	$query = mbtng_requested('query');
+	// if the WordPress tng display page is called
 	if (mbtng_display_page()) {
+		// get the tng path
 		$tng_folder = get_option('mbtng_path');
+		// set $filename equal to the filename requested in the url
 		$filename = mbtng_filename();
+		// check the file extension, if it equals .php
 		if (mbtng_extension() == 'php') {
+			// check if the filename is newacctform.php and the integrate logins option is set
  			if ($filename == 'newacctform.php' && get_option('mbtng_integrate_logins')) {
+ 				// if those two things are true, redirect the user to the WordPress register page
+ 				// FIX: probably can use wp_rewrite here
 				header("Location: ".trailingslashit(get_bloginfo('wpurl'))."wp-login.php?action=register");
+				// then finish
+				// FIX: with wp_rewrite this would become exit;
 				die();
 			}
+			// check if the filename is login.php and the integrate logins option is set
  			if ($filename == 'login.php' && get_option('mbtng_integrate_logins')) {
+ 				// if those two things are true, redirect the user to the WordPress login page
+ 				// FIX: there is now a wp_loging_url() tha can be called
+ 				// FIX: probably can use wp_rewrite here
 				header("Location: ".trailingslashit(get_bloginfo('wpurl'))."wp-login.php");
+				// then finish
+				// FIX: with wp_rewrite this would become exit;
 				die();
 			}
+			// check if the filename is logout.php and the integrate logins option is set
  			if ($filename == 'logout.php' && get_option('mbtng_integrate_logins')) {
+ 				// FIX: this function was introduced in WordPress 2.7, the check can safely be removed
 				if (function_exists('wp_logout_url'))
+					// if those two things are true, redirect the user to the WordPress logout 
 					header("Location: ".html_entity_decode(wp_logout_url()));
 				else
 					header("Location: ".trailingslashit(get_bloginfo('wpurl'))."wp-login.php?action=logout");
+				// then finish
+				// FIX: with wp_rewrite this would become exit;
 				die();
 			}
 			$tng_output = mbtng_eval_php($filename);
@@ -1097,37 +1138,61 @@ function mbtng_eval_php($filename) {
 
 // Returns the requested TNG page or query
 function mbtng_requested ($type = 'url') {
+	// set $requested to the current url
 	$requested = mbtng_requested_url();
+	// find the last position of the ? character in the string and add one to it
 	$query_pos = strrpos($requested, '?')+1;
+	// create the $query variable
 	$query = '';
+	// if the ? character is found
 	if ($query_pos !== 1) {
+		// set $query equal to everything after the ? character
 		$query = substr($requested, $query_pos);
+		// set $requested to the url starting at position 0 and get X number of characters from the start
+		// where X is equal to the position of ?
+		// this ensures we get the url minus any parameters sent
 		$requested = substr($requested, 0, $query_pos-1);
+		// check for the presence of the string tng_template= in $query (the url parameters)
 		$query_pos = strrpos($query, 'tng_template='); // Check
+		// if the tng_template= string is found
 		if ($query_pos !== FALSE)
+			// set $query to everything after the ? and before tng_tempalte=
 			$query = substr($query, 0, $query_pos);
 	}
+	// is the type a query or url?
 	if ($type == 'query')
+		// just return the query variable set above
 		return $query;
+	// QUESTION: why the elseif? the only two possiblities are query and url
+	// if the type is of the url variety	
 	elseif ($type='url') {
+		// set $requested to the string after the mbtng_url
+		// if the mbtng_url is 20 characters long, then start 20 characters in
 		$requested = substr($requested, strlen(get_option('mbtng_url')));
+		// if the first character of $requested is a / set $requested to /$requested
 		if (substr($requested, 0, 1) != '/')
 			$requested = '/'.$requested;
+		// if the last character is a / set $requested to /index.php
 		if (substr($requested, -1) == '/')
 			$requested .= 'index.php';
+		// return the tng url requested
 		return $requested;
 	}
 }
 
 // Returns the file extension of the requested page
 function mbtng_extension () {
+	// get the url requested
 	$requested = mbtng_requested();
+	// if the WordPress tng display page is called	
 	if (mbtng_display_page())
+		// return everthing after the . in the url
 		return strtolower(substr($requested, strrpos($requested, '.') + 1));
 }
 
 // Returns the filename of the requested page
 function mbtng_filename () {
+	// return the requested tng url minus the / character added in mbtng_requested()
 	return substr(mbtng_requested(),1);
 }
 
@@ -1346,7 +1411,7 @@ function mbtng_db_connect() {
 	if( $link && mysql_select_db($database_name, $link))
 		// return true
 		return $link;
-	// otherwise throw and error
+	// otherwise throw an error
 	else {
 		echo "Error: TNG is not communicating with your database. Please check your database settings and try again.";
 		exit;
@@ -1405,20 +1470,37 @@ function mbtng_correct_path($path='') {
 
 // Returns true if TNG page requested
 function mbtng_display_page () {
+	// there is no page to show TNG OR the path to TNG cannot be found
+	// is there a WordPress page designated to show TNG on? Checks if that option is equal to '' nothing
+	// FIX: get_option will return false if the option is not present
 	if (get_option('mbtng_wordpress_page')=='' | !mbtng_correct_path())
+		// if either of those options are missing return false
 		return false;
 	else {
+		// so there is a page designated to show tng and the tng path is set
+		// set $requested to the current url
 		$requested = mbtng_requested_url();
+		// find the last position of the ? character in the string and add one to it
 		$query_pos = strrpos($requested, '?')+1;
+		// if the ? character is found
 		if ($query_pos !== 1)
+			// set $requested to the url starting at position 0 and get X number of characters from the start
+			// where X is equal to the position of ?
+			// this ensures we get the url minus any parameters sent
 			$requested = substr($requested, 0, $query_pos-1);
+		// if the url requested contains the url used to display the tng page
 		if (stripos ($requested, get_option('mbtng_url')) !== FALSE) {
+			// get the tng path from the WordPress db
 			$tng_folder = get_option('mbtng_path');
+			// get the file name returned from mbtng_filename()
 			$filename = mbtng_filename();
+			// check if the file exists in the tng path
 			if (file_exists("{$tng_folder}/{$filename}")) {
+				// if it does, return true
 				return true;
 			}
 		}
+		// no WordPress tng display page
 		else
 			return false;
 	}
